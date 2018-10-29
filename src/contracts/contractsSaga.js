@@ -21,26 +21,32 @@ export function * addContract ({ drizzle, contractConfig, events, web3 }) {
 
   let drizzleContract
 
-  if (contractConfig.web3Contract) {
-    drizzleContract = yield call(instantiateWeb3Contract, {
-      web3Contract: contractConfig.web3Contract,
-      name: contractConfig.contractName,
-      events,
-      store: drizzle.store,
-      web3
-    })
-  } else {
-    drizzleContract = yield call(instantiateContract, {
-      contractArtifact: contractConfig,
-      events,
-      store: drizzle.store,
-      web3
-    })
+  try {
+    if (contractConfig.web3Contract) {
+      drizzleContract = yield call(instantiateWeb3Contract, {
+        web3Contract: contractConfig.web3Contract,
+        name: contractConfig.contractName,
+        events,
+        store: drizzle.store,
+        web3
+      })
+    } else {
+      drizzleContract = yield call(instantiateContract, {
+        contractArtifact: contractConfig,
+        events,
+        store: drizzle.store,
+        web3
+      })
+    }
+    drizzle._addContract(drizzleContract)
+
+    yield put({ type: 'CONTRACT_INITIALIZED', name: contractConfig.contractName })
+  } catch (error) {
+    const netId = yield call(web3.eth.net.getId)
+    const errorText = 'Contract ' + contractConfig.contractName + ' not found on network ID: ' + netId
+    console.error(errorText)
+    yield put({ type: 'CONTRACT_INIT_ERROR', name: contractConfig.contractName, error: errorText })
   }
-
-  drizzle._addContract(drizzleContract)
-
-  yield put({ type: 'CONTRACT_INITIALIZED', name: contractConfig.contractName })
 }
 
 /*
@@ -65,29 +71,24 @@ export function * instantiateContract ({
 }) {
   const networkId = yield select(getNetworkId)
 
-  try {
-    // Instantiate the contract.
-    var web3Contract = new web3.eth.Contract(
-      contractArtifact.abi,
-      contractArtifact.networks[networkId].address,
-      {
-        from: store.getState().accounts[0],
-        data: contractArtifact.deployedBytecode
-      }
-    )
+  // Instantiate the contract.
+  var web3Contract = new web3.eth.Contract(
+    contractArtifact.abi,
+    contractArtifact.networks[networkId].address,
+    {
+      from: store.getState().accounts[0],
+      data: contractArtifact.deployedBytecode
+    }
+  )
 
-    return new DrizzleContract(
-      web3Contract,
-      web3,
-      contractArtifact.contractName,
-      store,
-      events,
-      contractArtifact
-    )
-  } catch (error) {
-    console.error("The specified contract cannot be found on the specified network")
-    throw error
-  }
+  return new DrizzleContract(
+    web3Contract,
+    web3,
+    contractArtifact.contractName,
+    store,
+    events,
+    contractArtifact
+  )
 }
 
 /*
@@ -158,7 +159,10 @@ function createTxChannel ({ txObject, stackId, sendArgs = {}, contractName }) {
         emit({ type: 'TX_SUCCESSFUL', receipt: receipt, txHash: persistTxHash })
         emit(END)
       })
-      .on('error', error => {
+      .on('error', (error, receipt) => {
+        console.error(error)
+        console.error(receipt)
+
         emit({ type: 'TX_ERROR', error: error, txHash: persistTxHash })
         emit(END)
       })

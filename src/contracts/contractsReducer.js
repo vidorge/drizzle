@@ -28,6 +28,19 @@ const contractsReducer = (state = initialState, action) => {
     }
   }
 
+  if (action.type === 'CONTRACT_INIT_ERROR') {
+    return {
+      ...state,
+      [action.name]: {
+        ...state[action.name],
+        initialized: false,
+        synced: false,
+        events: [],
+        error: action.error
+      }
+    }
+  }
+
   if (action.type === 'CONTRACT_SYNCING') {
     const contractName = action.contract.contractName
 
